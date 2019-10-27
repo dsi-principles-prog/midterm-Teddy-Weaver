@@ -1,0 +1,115 @@
+---
+title: "30-feature-engineering"
+output: html_notebook
+---
+```{r}
+library(glue)
+```
+
+
+## Count of Services
+The current data structure does not make it easy to understand how many services a customer is subscribed to. They are a mixture of logical and string fields with different values. The thought is that the more services someone subscribe to, the more resistant they might be to cancel/churn.
+Thought: The more services one subscribes to, the less likely they are to churn.
+```{r}
+serivce_columns <- c("phone_service", "internet_service", "online_security", "online_backup", 
+                     "device_protection", "tech_support", "streaming_tv", "streaming_movies")
+
+service_count <- function(df, col_vector) {
+  column_check <- ifelse(col_vector %in% names(df),TRUE, FALSE)
+  
+  if(FALSE %in% column_check) {
+    bad_columns <- paste(col_vector[!column_check],collapse=", ")
+    stop(glue("Error - The following column(s) were not found in the data frame:\n {bad_columns}"))
+  }
+  
+  df %>% 
+    mutate(
+      tmp_internet_service = ifelse(!internet_service == "no", 1, 0),
+      tmp_online_security = ifelse(online_security == "yes", 1, 0), 
+      tmp_online_backup = ifelse(online_backup == "yes", 1, 0), 
+      tmp_device_protection = ifelse(device_protection == "yes", 1, 0),
+      tmp_tech_support = ifelse(tech_support == "yes", 1, 0),
+      tmp_streaming_tv = ifelse(streaming_tv == "yes", 1, 0),
+      tmp_streaming_movies = ifelse(streaming_movies == "yes", 1, 0)) %>% 
+    mutate(count_services = rowSums(.[grep("^tmp|^phone_service$", names(.))])) %>% 
+    select(everything(), -grep("^tmp", names(.)))
+}
+
+# Executing Function
+telco_churn_clean <- service_count(telco_churn_clean, serivce_columns)
+
+# Test - Value Within Expected Range
+telco_churn_clean %>% 
+  assert(within_bounds(1, 8), count_services)
+```
+
+
+## Percent of Available Services Subscribed
+Of the possible services offered, what percentage did the customer subscribe to. If they subscribe to interent, there are 8 possible services. If they do not subscribe to interent, there are only 2 possible services (phone, internet).
+Thought: The more services one subscribes to, the less likely they would be to churn.
+__Note__ - This makes the assumption that every customer had the option of an internet subscription.
+```{r}
+percent_services_subscribed <- function(df, 
+                                        phone = phone_service, 
+                                        internet = internet_service, 
+                                        count_service = count_services) {
+  df %>% 
+    mutate(perc_services_subscribed = {{count_service}} / 
+             ifelse(!{{internet}} == "no", 8, 2))
+}
+
+# Executing Function
+telco_churn_clean <- percent_services_subscribed(telco_churn_clean, phone_service, internet_service, count_services)
+
+# Test 1 -- Did subscribe to internet. Eight possible subscriptions
+telco_churn_clean %>% 
+  filter(!internet_service == "no") %>%
+    assert(in_set(.125, .25, .375, .5, .625, .75, .875, 1), perc_services_subscribed)
+
+# Test 2 -- Did not subscribe to internet. Only two possible subscriptions
+telco_churn_clean %>% 
+  filter(internet_service == "no") %>%
+    assert(in_set(.5, 1), perc_services_subscribed)
+```
+
+
+## Only Phone or Internet
+Identify whether or not someone subscribes to only phone, only internet (incl. other internet services), or both phone and internet.
+Thought: As home phone service is less common these days, does this make a customer less likely to churn?
+```{r}
+phone_or_internet <- function(df, phone_col, internet_col) {
+  df <- df %>% 
+  group_by({{phone_col}}, {{internet_col}}) %>% 
+  mutate(phone_or_internet = ifelse({{phone_col}} == TRUE & {{internet_col}} == "no", "phone",
+                                    ifelse({{phone_col}} == FALSE & !{{internet_col}}== "no", "internet", "both"))) %>% 
+  ungroup()
+  
+  df$phone_or_internet <- as.factor(df$phone_or_internet)
+  
+  return(df)
+}
+
+# Executing Function
+telco_churn_clean <-  phone_or_internet(telco_churn_clean, phone_service, internet_service)
+
+
+# Test -- Values in expected set.
+telco_churn_clean %>% 
+  assert(in_set("phone", "internet", "both"), phone_or_internet)
+
+```
+
+
+## Monthly Charge Per Service
+The average monthly charge for each service subscribed (monthy_charge / count_services).
+Thought: A customer with a higher cost per service might be more likely to churn.
+```{r}
+# Note - Done as a scoped mutate to show that I can. Implementation that makes the most sense is probably similar to the other feature engineering functions.
+
+ratio <- function(num, denom) (num / denom)
+
+# Executing Function
+telco_churn_clean <- telco_churn_clean %>% 
+  mutate_at(c("monthly_charges"), list(monthly_charge_per_service = ratio), denom = telco_churn_clean$count_services) %>% 
+  mutate(monthly_charge_per_service = round(monthly_charge_per_service,2))
+```

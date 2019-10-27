@@ -1,0 +1,124 @@
+---
+title: "10-import"
+output: html_notebook
+---
+```{r setup}
+library(tidyverse)
+library(janitor)
+library(assertr)
+library(lubridate)
+# library(data.table)
+```
+
+## Goal
+Predict if a Telco (e.g. Comcast, AT&T) customer will churn (stop subscribing) from some customer information and details about their subscriptions. The 'churn' column indicates whether or not the respective customer has stopped subscribing. The goal is to predict this as accurately as possible.
+
+NOTE - README2 has more information about the data and each of its columns.
+
+
+Import data from CSV and clean names
+```{r data_import}
+dirty_df <- read_csv("data/Telco-Customer-Churn.csv")
+dirty_df <- clean_names(dirty_df)
+```
+
+
+Summary information about the the data set.
+```{r data_summary}
+summary(dirty_df)
+str(dirty_df)
+```
+
+
+Cleaning -- Convert all text to lower case
+```{r cleaning_to_lower_case}
+dirty_df <- dirty_df %>% 
+  mutate_if(is.character, str_to_lower) %>% 
+  mutate_at(vars(matches("customer_id")), str_to_upper)
+```
+
+
+Cleaning -- Convert columns to logical from numeric or string, where applicable.
+```{r cleaning_to_logical}
+dirty_df <-dirty_df %>% 
+  mutate(senior_citizen = ifelse(senior_citizen == 1, TRUE, FALSE)) %>% 
+  mutate(partner = ifelse(partner == "yes", TRUE, FALSE)) %>% 
+  mutate(dependents = ifelse(dependents == "yes", TRUE, FALSE)) %>% 
+  mutate(phone_service = ifelse(phone_service == "yes", TRUE, FALSE)) %>% 
+  mutate(paperless_billing = ifelse(paperless_billing == "yes", TRUE, FALSE)) %>% 
+  mutate(churn = ifelse(churn == "yes", TRUE, FALSE))
+```
+
+
+Update total_charges to be 0 instead of NA when the tenure is 0 months.
+```{r update_total_charges}
+# Create temporary df and check to make sure total charges matches between data frames.
+tmp_df <- dirty_df %>% 
+  mutate(total_charges = ifelse(tenure == 0, 0, total_charges))
+
+if(sum(tmp_df$total_charges) == sum(dirty_df$total_charges, na.rm = TRUE)) {
+  tmp_df %>% 
+    assert(not_na, total_charges)
+  
+  dirty_df <- tmp_df
+  rm(tmp_df)
+}
+```
+
+
+Assert - Customer ID is a unique value
+```{r check_unqiue_customer_id}
+dirty_df %>% 
+  assert(is_uniq, customer_id)
+```
+
+
+Assert - Gender is either male or female
+```{r check_gender}
+dirty_df %>% 
+  assert(in_set("male", "female"), gender)
+```
+
+
+Assert - Tenure is a valid numeric range
+```{r}
+dirty_df %>% 
+  assert(within_bounds(0,125), tenure) # Max currently 72 years
+```
+
+
+Assert - Check the below fields only include known values / factors
+```{r check_known_fators}
+dirty_df %>% 
+  assert(in_set("yes", "no", "no phone service"), multiple_lines) %>% 
+  assert(in_set("dsl", "fiber optic", "no"), internet_service) %>% 
+  assert(in_set("yes", "no", "no internet service"), online_security) %>% 
+  assert(in_set("yes", "no", "no internet service"), online_backup) %>% 
+  assert(in_set("yes", "no", "no internet service"), device_protection) %>% 
+  assert(in_set("yes", "no", "no internet service"), tech_support) %>% 
+  assert(in_set("yes", "no", "no internet service"), streaming_tv) %>% 
+  assert(in_set("yes", "no", "no internet service"), streaming_movies) %>% 
+  assert(in_set("month-to-month", "one year", "two year"), contract) %>% 
+  assert(in_set("electronic check", "mailed check", "bank transfer (automatic)", "credit card (automatic)" ), payment_method)
+```
+
+
+Assert - Check that monthly charges are greater than 0 and reasonable
+```{r}
+dirty_df %>% 
+  assert(within_bounds(0,250), monthly_charges)
+```
+
+
+Assert - Check that the total charges are greater than or eaual to 0 and reasonable
+```{r}
+dirty_df %>% 
+  assert(within_bounds(0,22000), total_charges)
+```
+
+
+Rename final data frame and delete temporary 'dirty_df'
+```{r data_rename}
+telco_churn_clean <- dirty_df
+rm(dirty_df)
+```

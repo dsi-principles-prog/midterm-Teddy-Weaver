@@ -1,0 +1,10 @@
+---
+title: "40-modeling"
+output: html_notebook
+---
+
+## Preparing for Modeling
+```{r}
+telco_churn_clean <- telco_churn_clean %>% 
+  select(churn, everything())
+```
