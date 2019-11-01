@@ -45,7 +45,7 @@ telco_churn_clean %>%
 
 
 ## Percent of Available Services Subscribed
-Of the possible services offered, what percentage did the customer subscribe to. If they subscribe to interent, there are 8 possible services. If they do not subscribe to interent, there are only 2 possible services (phone, internet).
+Of the possible services offered, what percentage did the customer subscribe to. If they subscribe to internet, there are 8 possible services. If they do not subscribe to interent, there are only 2 possible services (phone, internet).
 Thought: The more services one subscribes to, the less likely they would be to churn.
 __Note__ - This makes the assumption that every customer had the option of an internet subscription.
 ```{r}
@@ -70,4 +70,43 @@ telco_churn_clean %>%
 telco_churn_clean %>% 
   filter(internet_service == "no") %>%
     assert(in_set(.5, 1), perc_services_subscribed)
+```
+
+
+
+
+```{r}
+telco_churn_clean %>% 
+  mutate(pi_subscription = case_when(phone_service == "TRUE" & internet_service != "no" ~ "both", phone_service == "TRUE" ~ "phone", internet_service != "no" ~ "internet")) %>% 
+  select(pi_subscription, everything())
+```
+
+
+
+
+```{r}
+# Exploring columns of interest
+telco_churn_clean %>% 
+  tabyl(phone_service)
+
+telco_churn_clean%>% 
+  tabyl(internet_service)
+
+
+# Wrtiting a function
+subscriptions <- function(df, phone_service, internet_service) {
+  df %>% 
+  mutate(pi_subscription = case_when(phone_service == "TRUE" & internet_service != "no" ~ "both", phone_service == "TRUE" ~ "phone", internet_service != "no" ~ "internet")) %>% 
+  select(pi_subscription, everything())
+}                                     
+
+
+# Applying function and creating new dataframe
+telco_churn_features <- telco_churn_clean  %>% 
+  subscriptions(phone_service, internet_service)
+
+
+# Testing with assert statement
+telco_churn_features %>% 
+  assert(in_set("phone", "internet", "both"), pi_subscription)
 ```
